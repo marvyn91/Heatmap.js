@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+            
+    <meta charset="UTF-8">
+            <title>1Flugsuche</title>
+            
+    <style>
+
+                </style>
+            
+    <link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet-0.7.3/leaflet.css"/>
+            
+    <script src="http://cdn.leafletjs.com/leaflet-0.7.3/leaflet.js"></script>
+            
+    <script src="./heatmap.js"></script>
+            
+    <script src="./leaflet-heatmap.js"></script>
+
+            
+    <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body>
+
+<div id="waitOverlayWrapper" style="display: none;">       
+    <div id="waitOverlayContent">
+                    <img src="static/media/black-plane.png" id="waitPlane">
+
+                    <p class="text-center" style="margin-top:2.8em;">
+                        Bitte warten...
+                    </p>        
+    </div>
+</div>
+
+<div class="headerBar">
+            
+    <form action="http://flights.eliashenrich.de/form.php" method="POST" class="text-center"
+          onsubmit="return showOverlay()">
+                    von
+                    <input type="text" name="origin" value="SYD" placeholder="von" class="text-center">
+                    nach
+                    <input type="text" name="destination" value="LAX" placeholder="nach" class="text-center">
+                    <input type="submit" value="Suchen">
+                
+    </form>
+</div>
+
+<div class="contentWrapper">        
+    <div class="contentLeft">
+                    <h1>
+                        Das ist der Header
+                    </h1>           
+        <ul class="flightList" id="flightList">                
+            <li class="hidden" id="listDummy">
+                 <span class="flightFrom"></span> -> <span class="flightTo"></span>
+                 <span class="timeDeparture">13:00</span> <span class="timeArrival">17:00</span>               
+            </li>            
+        </ul>        
+    </div>
+            
+    <div class="contentRight">            
+        <div id="map"></div>        
+    </div>
+</div>
+
+<script>
+
+
+    airportObject = [];
+
+    window.onload = function () {
+        var allAirports = ["HNL", "LAX", "PVG", "SYD", "JFK", "KOA", "MKK", "NAN", "APW", "PPT", "AKL", "NOU", "YVR", "IAD"];
+        allAirports.forEach(function (s) {
+            var params = {
+                code: s
+            };
+            flightSearch.requestAPI('/schedule/get&code=', params, successCallback);
+            console.log("AirportCode: " + s)
+        });
+        setTimeout(function () {
+            createMap(airportObject)
+        }, 3000);
+    };
+
+
+    function FlightSearchAPI() {
+        this.endpoint = 'http://flights.eliashenrich.de/api.php';
+
+        this.requestAPI = function (action, data, callback) {
+            var url = this.endpoint + '?action=' + action;
+
+            var keys = Object.keys(data);
+            for (var i = 0; i < keys.length; i++) {
+                var paramName = keys[i];
+                var paramValue = data[keys[i]];
+
+                url += "&" + paramName + "=" + paramValue;
+            }
+
+            var request = new XMLHttpRequest();
+
+            request.onreadystatechange = function () {
+                console.log("Status hat sich geändert", this.readyState);
+
+                // Ist die Anfrage beendet?
+                if (this.readyState === 4) {
+                    // Http-Statuscode prüfen
+                    if (this.status === 200) {
+                        console.log("Anfrage erfolgreich");
+                        console.log(this.responseText);
+
+                        callback(this.responseText);
+                    }
+                }
+            };
+
+            request.open('GET', url, true);
+            request.send();
+        };
+    }
+
+
+
+    var alleFluegeProAirport = 0;
+    var flightSearch = new FlightSearchAPI();
+
+
+    function successCallback(data) {
+
+
+        var response = JSON.parse(data);
+
+        airportObject.push(response);
+    }
+
+
+    function showOverlay() {
+        addListItem("19:30");
+        return false;
+
+        var element = document.getElementById('waitOverlayWrapper');
+        element.style.display = "block";
+
+        return false;
+    }
+
+    function hideOverlay() {
+        var element = document.getElementById('waitOverlayWrapper');
+        element.style.display = 'none';
+    }
+
+    function addListItem(airportFrom, airportTo) {
+        var listItem = document.getElementById('listDummy');
+
+        // Listenelement klonen und neu einfügen
+        var newListItem = listItem.cloneNode(true);
+        newListItem.setAttribute('id', '');
+        newListItem.classList.remove('hidden');
+
+        // Kindelement des neuen Knotens bearbeiten
+        newListItem.getElementsByClassName('flightFrom')[0].innerText = airportFrom;
+        newListItem.getElementsByClassName('flightTo')[0].innerText = airportTo;
+
+        // airportFrom & airportTo setzen
+        document.getElementById('flightList').appendChild(newListItem);
+    }
+
+
+    // Heatmap-part is starting below
+
+    function createMap(data) {
+
+
+        var FinalcoordinatesWithRadius = {
+            max: 8,
+            data: []
+        };
+        data.forEach(function (flightObject) {
+            var lat = flightObject.data[0].airportFrom.PositionLat;
+            var lng = flightObject.data[0].airportFrom.PositionLon;
+            var length = flightObject.data.length;
+                console.log("Aiport-Code: "+ flightObject.data[0].airportFrom.CodeIATA + " -- " +"number of flights: "+ flightObject.data.length);
+            var currentRadius = 1;
+
+            switch (true) {
+                case(length < 10):
+                    currentRadius = 0.5;
+                    break;
+                case(length < 60):
+                    currentRadius = 2;
+                    break;
+                case(length < 100):
+                    currentRadius = 4;
+                    break;
+                case(length < 100):
+                    currentRadius = 6;
+                    break;
+                case(length < 125):
+                    currentRadius = 8;
+                    break;
+                case(length < 130):
+                    currentRadius = 10;
+                    break;
+                case(length < 150):
+                    currentRadius = 12;
+                    break;
+                case(length < 200):
+                    currentRadius = 14;
+                    break;
+                case(length < 300):
+                    currentRadius = 16;
+                    break;
+                case(length < 400):
+                    currentRadius = 18;
+                    break;
+                default:
+                    currentRadius = 20;
+                    break;
+            }
+
+
+            FinalcoordinatesWithRadius.data.push({lat: lat, lng: lng, radius: currentRadius})
+        });
+
+        var baseLayer = L.tileLayer(
+            'http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: 'Map data &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors, <a href="http://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery © <a href="http://cloudmade.com">CloudMade</a>',
+                maxZoom: 18
+            }
+        );
+
+        var cfg = {
+            // radius should be small ONLY if scaleRadius is true (or small radius is intended)
+            radius: 1,
+            "maxOpacity": .8,
+            // scales the radius based on map zoom
+            "scaleRadius": true,
+            // if set to false the heatmap uses the global maximum for colorization
+            // if activated: uses the data maximum within the current map boundaries
+            //   (there will always be a red spot with useLocalExtremas true)
+            "useLocalExtrema": true,
+            // which field name in your data represents the latitude - default "lat"
+            latField: 'lat',
+            // which field name in your data represents the longitude - default "lng"
+            lngField: 'lng',
+            // which field name in your data represents the data value - default "value"
+            valueField: 'count'
+        };
+
+
+        var heatmapLayer = new HeatmapOverlay(cfg);
+
+        var map = new L.Map('map', {
+            center: new L.LatLng(25.6586, -80.3568),
+            zoom: 4,
+            layers: [baseLayer, heatmapLayer]
+        });
+
+        heatmapLayer.setData(FinalcoordinatesWithRadius);
+
+        layer = heatmapLayer;
+    }
+</script>
+
+
+
